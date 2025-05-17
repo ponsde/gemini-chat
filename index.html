@@ -2064,1280 +2064,498 @@
             }
         }
         
-        // 应用对话样式
-        function applyChatStyle() {
-            const chatStyle = settings.chatStyle || 0;
-            document.documentElement.style.setProperty('--chat-style', chatStyle);
+        // 初始化设置
+        function initializeSettings() {
+            // 从本地存储加载设置
+            apiKey = localStorage.getItem('gemini_api_key') || '';
+            apiEndpoint = localStorage.getItem('gemini_api_endpoint') || 'https://generativelanguage.googleapis.com/';
+            apiModel = localStorage.getItem('gemini_api_model') || 'gemini-1.5-pro';
             
-            const chatContainer = document.querySelector('.chat-container');
-            if (chatContainer) {
-                // 移除所有样式类
-                chatContainer.classList.remove('default-style', 'bubble-style', 'document-style');
-                
-                // 添加对应的样式类
-                switch (parseInt(chatStyle)) {
-                    case 0:
-                        chatContainer.classList.add('default-style');
-                        break;
-                    case 1:
-                        chatContainer.classList.add('bubble-style');
-                        break;
-                    case 2:
-                        chatContainer.classList.add('document-style');
-                        break;
-                }
-            }
-        }
-        
-        // 切换主题
-        function toggleTheme(checked) {
-            const body = document.body;
+            // API设置
+            $('#api_key').val(apiKey);
+            $('#api_endpoint').val(apiEndpoint);
+            $('#api_model').val(apiModel);
             
-            if (checked) {
-                body.setAttribute('data-theme', 'dark');
-                settings.theme = 'dark';
-            } else {
-                body.removeAttribute('data-theme');
-                settings.theme = 'light';
+            // 默认深色模式设置
+            const darkMode = localStorage.getItem('dark_mode') === 'true';
+            $('#dark_mode').prop('checked', darkMode);
+            if (darkMode) {
+                document.body.classList.add('dark-theme');
             }
             
-            // 保存主题设置到localStorage
-            localStorage.setItem('geminiChatTheme', settings.theme);
-        }
-        
-        // 显示已认证的UI
-        function showAuthenticatedUI() {
-            modelSelectionRow.style.display = 'flex';
-            saveSettingsBtn.style.display = 'block';
-            checkConnectionBtn.textContent = '重新验证';
-            
-            // 更新验证状态
-            isAuthenticated = true;
-            
-            // 获取可用模型列表
-            fetchAvailableModels();
-        }
-        
-        // 验证访问密钥
-        async function validateAccessKey() {
-            const inputKey = apiKeyAuthInput.value.trim();
-            
-            if (!inputKey) {
-                showNotification('请输入访问密钥', true);
-                return;
-            }
-            
-            updateApiStatus('checking', '正在验证密钥...');
-            
-            // 简单的密钥验证
-            if (VALID_ACCESS_KEYS.includes(inputKey)) {
-                // 验证成功
-                setTimeout(() => {
-                    updateApiStatus('connected', '已连接');
-                    showAuthenticatedUI();
-                    showNotification('密钥验证成功，已建立连接');
-                }, 800); // 添加短暂延迟以模拟验证过程
-            } else {
-                // 验证失败
-                setTimeout(() => {
-                    updateApiStatus('disconnected', '密钥验证失败');
-                    showNotification('密钥验证失败，请重试', true);
-                }, 800);
-            }
-        }
-        
-        // 更新API状态显示
-        function updateApiStatus(status, message) {
-            apiStatus = status;
-            statusText.textContent = message;
-            
-            statusIndicator.className = 'status-indicator';
-            if (status === 'connected') {
-                statusIndicator.classList.add('status-connected');
-            } else if (status === 'checking') {
-                statusIndicator.classList.add('status-checking');
-            } else {
-                statusIndicator.classList.add('status-disconnected');
-            }
-        }
-        
-        // 检查API连接状态
-        async function checkApiConnection() {
-            // 如果未验证，先验证密钥
-            if (!isAuthenticated) {
-                validateAccessKey();
-                return;
-            }
-            
-            updateApiStatus('checking', '正在检查连接...');
-            
-            try {
-                // 尝试请求API服务器的根路径
-                const endpoint = `${INTERNAL_API_URL}/`;
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
+            // 界面标签切换
+            $('.settings-tab').on('click', function() {
+                $('.settings-tab').removeClass('active');
+                $(this).addClass('active');
                 
-                if (response.ok) {
-                    updateApiStatus('connected', '已连接');
-                    // 连接成功后获取可用模型列表
-                    await fetchAvailableModels();
-                } else {
-                    updateApiStatus('disconnected', `连接失败: ${response.status}`);
-                }
-            } catch (error) {
-                console.error('API连接检查错误:', error);
-                updateApiStatus('disconnected', '连接失败');
-            }
-        }
-        
-        // 更新API状态显示
-        function updateApiStatus(status, message) {
-            apiStatus = status;
-            statusText.textContent = message;
-            
-            statusIndicator.className = 'status-indicator';
-            if (status === 'connected') {
-                statusIndicator.classList.add('status-connected');
-            } else if (status === 'checking') {
-                statusIndicator.classList.add('status-checking');
-            } else {
-                statusIndicator.classList.add('status-disconnected');
-            }
-        }
-        
-        // 显示通知消息
-        function showNotification(message, isError = false) {
-            errorBox.textContent = message;
-            errorBox.style.display = 'block';
-            errorBox.style.backgroundColor = isError ? 'var(--error-bg)' : '#d4edda';
-            errorBox.style.color = isError ? 'var(--error-color)' : '#155724';
-            setTimeout(() => {
-                errorBox.style.display = 'none';
-            }, 3000);
-        }
-        
-        // 获取可用的模型列表
-        async function fetchAvailableModels() {
-            try {
-                // 必须先验证密钥
-                if (!isAuthenticated) {
-                    showNotification('请先验证密钥', true);
-                    return;
-                }
-                
-                // 尝试从标准API获取模型列表
-                let success = await tryFetchModelsFromStandardAPI(INTERNAL_API_URL);
-                
-                // 如果标准API失败，尝试从hajimi后台API获取
-                if (!success) {
-                    success = await tryFetchModelsFromHajimiAPI(INTERNAL_API_URL);
-                }
-                
-                // 如果两种方法都失败，显示错误
-                if (!success) {
-                    showNotification('无法获取可用模型列表，请检查API连接', true);
-                }
-            } catch (error) {
-                console.error('获取模型列表失败:', error);
-                showNotification(`获取模型列表错误: ${error.message}`, true);
-            }
-        }
-        
-        // 从标准OpenAI兼容API获取模型
-        async function tryFetchModelsFromStandardAPI(apiUrl) {
-            try {
-                // 尝试从模型列表API获取可用模型
-                const endpoint = `${apiUrl}/v1/models`;
-                const headers = {
-                    'Accept': 'application/json'
-                };
-                
-                // 如果有API密码，添加到Headers
-                if (INTERNAL_API_PASSWORD) {
-                    headers['Authorization'] = `Bearer ${INTERNAL_API_PASSWORD}`;
-                }
-                
-                console.log('正在从标准API获取模型列表...');
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: headers
-                });
-                
-                if (!response.ok) {
-                    console.warn(`标准API获取模型列表失败，状态码: ${response.status}`);
-                    return false;
-                }
-                
-                const data = await response.json();
-                console.log('标准API返回的模型数据:', data);
-                
-                // 适配不同的API响应格式
-                let modelList = [];
-                
-                // 标准OpenAI格式
-                if (data && data.data && Array.isArray(data.data)) {
-                    modelList = data.data;
-                } 
-                // 或者直接是模型数组
-                else if (Array.isArray(data)) {
-                    modelList = data.map(item => {
-                        if (typeof item === 'string') {
-                            return { id: item };
-                        } else if (item && item.id) {
-                            return item;
-                        }
-                        return null;
-                    }).filter(Boolean);
-                }
-                
-                if (modelList.length > 0) {
-                    updateModelOptions(modelList);
-                    console.log(`成功从标准API获取到 ${modelList.length} 个模型`);
-                    return true;
-                } 
-                
-                return false;
-            } catch (error) {
-                console.error('从标准API获取模型列表失败:', error);
-                return false;
-            }
-        }
-        
-        // 从hajimi后台API获取模型
-        async function tryFetchModelsFromHajimiAPI(apiUrl) {
-            try {
-                // 从hajimi后台API获取模型列表
-                const baseUrl = apiUrl.endsWith('/v1') ? apiUrl.slice(0, -3) : apiUrl;
-                const endpoint = `${baseUrl}/api/endpoints/models`;
-                
-                console.log('尝试从hajimi后台获取模型列表...');
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' }
-                });
-                
-                if (!response.ok) {
-                    console.warn(`hajimi后台获取模型列表失败，状态码: ${response.status}`);
-                    return false;
-                }
-                
-                const data = await response.json();
-                console.log('hajimi后台返回的模型数据:', data);
-                
-                // 处理hajimi后台返回的模型列表格式
-                let modelList = [];
-                
-                if (data && Array.isArray(data.model_list)) {
-                    // hajimi后台通常返回model_list数组
-                    modelList = data.model_list.map(name => ({ id: name }));
-                } else if (data && data.models && Array.isArray(data.models)) {
-                    // 另一种可能的格式
-                    modelList = data.models.map(name => ({ id: name }));
-                } else if (data && typeof data === 'object') {
-                    // 可能是对象格式，每个键是一个模型名称
-                    modelList = Object.keys(data).map(key => ({ id: key }));
-                }
-                
-                if (modelList.length > 0) {
-                    updateModelOptions(modelList);
-                    console.log(`成功从hajimi后台获取到 ${modelList.length} 个模型`);
-                    return true;
-                } else {
-                    console.warn('hajimi后台返回的数据中没有找到有效的模型列表');
-                    return false;
-                }
-            } catch (error) {
-                console.error('从hajimi后台获取模型列表失败:', error);
-                return false;
-            }
-        }
-        
-        // 更新模型选择下拉框
-        function updateModelOptions(models) {
-            // 保存当前选择的模型
-            const currentSelectedModel = modelSelect.value;
-            
-            // 清空现有选项
-            modelSelect.innerHTML = '';
-            
-            // 如果没有模型，显示提示信息
-            if (!models || models.length === 0) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = '-- 未检测到可用模型 --';
-                option.disabled = true;
-                modelSelect.appendChild(option);
-                modelSelect.value = '';
-                showNotification('未检测到可用模型，请检查API连接', true);
-                return;
-            }
-            
-            // 添加从API获取的模型
-            models.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.id;
-                modelSelect.appendChild(option);
+                const tabId = $(this).data('tab');
+                $('.tab-content').hide();
+                $('#' + tabId).show();
             });
             
-            // 尝试恢复之前选择的模型，如果不存在则选择第一个
-            if (models.some(model => model.id === currentSelectedModel)) {
-                modelSelect.value = currentSelectedModel;
-            } else if (models.length > 0) {
-                // 如果找不到之前的模型，默认选择第一个
-                modelSelect.value = models[0].id;
-                settings.model = models[0].id;
-                saveSettings();
-            }
+            // 初始化滑块值显示
+            $('.range-with-value input[type="range"]').each(function() {
+                const valueDisplay = $(this).siblings('.range-value');
+                valueDisplay.text($(this).val());
+                
+                $(this).on('input', function() {
+                    valueDisplay.text($(this).val());
+                });
+            });
             
-            showNotification('已更新可用模型列表');
+            // API设置保存
+            $('#api_key, #api_endpoint, #api_model').on('change', function() {
+                apiKey = $('#api_key').val();
+                apiEndpoint = $('#api_endpoint').val();
+                apiModel = $('#api_model').val();
+                
+                localStorage.setItem('gemini_api_key', apiKey);
+                localStorage.setItem('gemini_api_endpoint', apiEndpoint);
+                localStorage.setItem('gemini_api_model', apiModel);
+            });
+            
+            // 切换深色模式
+            $('#dark_mode').on('change', function() {
+                const darkMode = $(this).prop('checked');
+                localStorage.setItem('dark_mode', darkMode);
+                document.body.classList.toggle('dark-theme', darkMode);
+            });
+            
+            // 重置聊天历史
+            $('#reset-chat').on('click', function() {
+                if (confirm('确定要清除所有聊天记录吗？此操作不可撤销。')) {
+                    chatHistory = [];
+                    $('#messages').empty();
+                    localStorage.removeItem('gemini_chat_history');
+                    $('#settings-modal').hide();
+                }
+            });
+            
+            // 导出聊天记录
+            $('#export-chat').on('click', function() {
+                const dataStr = JSON.stringify(chatHistory);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                
+                const exportFileDefaultName = 'gemini-chat-export-' + new Date().toISOString() + '.json';
+                
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+            });
+            
+            // 导入聊天记录
+            $('#import-chat').on('click', function() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'application/json';
+                
+                input.onchange = e => {
+                    const file = e.target.files[0];
+                    
+                    const reader = new FileReader();
+                    reader.readAsText(file, 'UTF-8');
+                    
+                    reader.onload = readerEvent => {
+                        try {
+                            const content = readerEvent.target.result;
+                            const parsedData = JSON.parse(content);
+                            
+                            if (Array.isArray(parsedData)) {
+                                chatHistory = parsedData;
+                                $('#messages').empty();
+                                
+                                // 显示导入的消息
+                                chatHistory.forEach(message => {
+                                    addMessageToChat(message.role, message.content, message.id);
+                                });
+                                
+                                localStorage.setItem('gemini_chat_history', JSON.stringify(chatHistory));
+                                $('#settings-modal').hide();
+                                
+                                toastr.success('聊天记录导入成功');
+                            } else {
+                                throw new Error('Invalid file format');
+                            }
+                        } catch (error) {
+                            toastr.error('导入失败：无效的文件格式');
+                        }
+                    }
+                };
+                
+                input.click();
+            });
         }
         
-        // 发送消息
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message) return;
+        // 获取生成设置参数
+        function getGenerationSettings() {
+            const settings = {
+                temperature: parseFloat(temperatureRange.value),
+                topP: parseFloat(topPRange.value),
+                topK: parseInt(topKRange.value),
+                maxOutputTokens: parseInt(maxTokensRange.value),
+            };
             
-            // 检查是否已通过密钥验证
+            // 根据采样方法调整参数
+            switch(samplingMethod.value) {
+                case 'temperature':
+                    // 温度采样，不需要调整，默认就用temperature
+                    break;
+                case 'nucleus':
+                    // Nucleus采样，使用topP，将temperature设为1
+                    settings.temperature = 1;
+                    break;
+                case 'topk':
+                    // TopK采样，使用topK，将temperature设为1，topP设为1
+                    settings.temperature = 1;
+                    settings.topP = 1;
+                    break;
+            }
+            
+            return settings;
+        }
+
+        // 发送请求到Gemini API
+        async function sendRequest(prompt) {
             if (!isAuthenticated) {
-                showNotification('请先在设置中验证密钥', true);
+                showError('请先验证API密钥');
                 return;
             }
             
-            // 更新对话标题（如果是该对话的第一条消息）
-            updateConversationTitle(message);
-            
-            // 添加用户消息到聊天
-            appendMessage(message, 'user');
-            
-            // 将消息添加到当前对话
-            const conversation = getCurrentConversation();
-            if (conversation) {
-                conversation.messages.push({
-                    role: 'user',
-                    content: message
-                });
-                saveConversations();
+            if (prompt.trim() === '') {
+                return;
             }
             
-            // 清空输入框
-            messageInput.value = '';
-            adjustTextareaHeight();
-            
-            // 禁用发送按钮
+            // 禁用输入
+            messageInput.disabled = true;
             sendButton.disabled = true;
             
-            // 显示输入中指示器
-            typingIndicator.style.display = 'block';
+            // 显示用户消息
+            const userMessage = {
+                role: 'user',
+                content: prompt,
+                timestamp: new Date().toISOString()
+            };
             
-            // 显示停止生成按钮
+            addMessage(userMessage);
+            
+            // 准备当前对话的消息历史
+            const currentConversation = conversations.find(conv => conv.id === currentConversationId);
+            if (!currentConversation) {
+                showError('对话未找到');
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                return;
+            }
+            
+            // 添加用户消息到会话历史
+            currentConversation.messages.push(userMessage);
+            
+            // 显示打字指示器
+            typingIndicator.style.display = 'flex';
             stopGenerating.style.display = 'block';
             
+            // 滚动到最底部
+            if (settings.autoScroll) {
+                scrollToBottom();
+            }
+            
             try {
-                // 创建AbortController用于中止fetch请求
+                // 准备API请求
                 abortController = new AbortController();
-                const signal = abortController.signal;
+                const { signal } = abortController;
                 
-                // 检查API连接状态
-                if (apiStatus !== 'connected') {
-                    throw new Error('API未连接，请检查设置');
-                }
+                // 创建一个临时的AI消息占位符
+                const aiMessage = {
+                    role: 'assistant',
+                    content: '',
+                    timestamp: new Date().toISOString()
+                };
                 
-                // 获取选择的模型
-                const selectedModel = settings.model;
+                // 将占位消息添加到UI
+                const aiMessageId = addMessage(aiMessage);
                 
-                // 准备请求体
-                const messages = [];
+                // 准备消息历史，转换为Gemini API格式
+                const history = [];
                 
-                // 添加历史消息
-                if (conversation) {
-                    conversation.messages.forEach(msg => {
-                        messages.push({
-                            role: msg.role,
-                            content: msg.content
-                        });
+                // 只使用最近几轮对话，避免超出上下文窗口
+                const maxHistoryMessages = 20; // 根据需要调整
+                const recentMessages = currentConversation.messages.slice(-maxHistoryMessages);
+                
+                // 添加系统提示（如果有）
+                const systemPrompt = document.getElementById('system-prompt-input').value.trim();
+                if (systemPrompt) {
+                    history.push({
+                        role: 'user',
+                        parts: [{ text: systemPrompt }]
+                    });
+                    history.push({
+                        role: 'model',
+                        parts: [{ text: '我理解了您的要求，将按照指示回复。' }]
                     });
                 }
                 
-                // 构建请求体
-                const requestBody = {
-                    model: selectedModel,
-                    messages: messages,
-                    temperature: settings.temperature,
-                    top_p: settings.topP,
-                    max_tokens: settings.maxTokens,
-                    stream: settings.stream
-                };
-                
-                // 确定API URL路径
-                const endpoint = `${INTERNAL_API_URL}/v1/chat/completions`;
-                
-                // 设置请求头
-                const headers = {
-                    'Content-Type': 'application/json'
-                };
-                
-                // 添加API密码到Headers
-                if (INTERNAL_API_PASSWORD) {
-                    headers['Authorization'] = `Bearer ${INTERNAL_API_PASSWORD}`;
-                }
-                
-                // 发送请求
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(requestBody),
-                    signal: signal // 添加信号以支持中止请求
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`API返回错误: ${response.status} ${response.statusText}`);
-                }
-                
-                let responseText = '';
-                
-                // 处理流式响应
-                if (settings.stream && response.body) {
-                    // 创建机器人消息元素
-                    const botMessageElement = document.createElement('div');
-                    botMessageElement.classList.add('bot-message');
-                    botMessageElement.classList.add('chat-message');
-                    botMessageElement.innerHTML = '';
-                    
-                    // 添加头像
-                    const avatarDiv = document.createElement('div');
-                    avatarDiv.className = 'message-avatar';
-                    avatarDiv.innerHTML = '<i class="fas fa-robot"></i>';
-                    botMessageElement.appendChild(avatarDiv);
-                    
-                    // 添加消息内容
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'message-content';
-                    botMessageElement.appendChild(contentDiv);
-                    
-                    // 添加消息操作按钮
-                    const actionsDiv = document.createElement('div');
-                    actionsDiv.classList.add('message-actions');
-                    actionsDiv.innerHTML = '<button class="copy-message" title="复制"><i class="fas fa-copy"></i></button>';
-                    botMessageElement.appendChild(actionsDiv);
-                    
-                    chatContainer.appendChild(botMessageElement);
-                    
-                    // 设置事件监听器
-                    botMessageElement.querySelector('.copy-message').addEventListener('click', function() {
-                        copyMessageText(this);
+                // 添加对话历史
+                for (let i = 0; i < recentMessages.length - 1; i++) { // 排除最后一条用户消息，会单独添加
+                    const message = recentMessages[i];
+                    history.push({
+                        role: message.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: message.content }]
                     });
-                    
-                    // 处理流数据
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    
-                    try {
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-                            
-                            // 解码数据
-                            const chunk = decoder.decode(value, { stream: true });
-                            
-                            // 处理SSE格式的数据
-                            const lines = chunk.split('\n');
-                            for (const line of lines) {
-                                if (line.startsWith('data:')) {
-                                    let data = line.slice(5).trim();
-                                    
-                                    // 检查是否是 [DONE] 消息
-                                    if (data === '[DONE]') continue;
-                                    
-                                    try {
-                                        // 解析JSON数据
-                                        const jsonData = JSON.parse(data);
-                                        
-                                        // 提取内容
-                                        if (jsonData.choices && 
-                                            jsonData.choices[0] && 
-                                            jsonData.choices[0].delta && 
-                                            jsonData.choices[0].delta.content) {
-                                            const content = jsonData.choices[0].delta.content;
-                                            responseText += content;
-                                            contentDiv.innerHTML = formatMessage(responseText);
-                                            
-                                            // 自动滚动到底部
-                                            chatContainer.scrollTop = chatContainer.scrollHeight;
-                                        }
-                                    } catch (e) {
-                                        console.error('解析流数据错误:', e);
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        // 检查是否是用户手动中止
-                        if (e.name === 'AbortError') {
-                            console.log('用户中止了回复生成');
-                            // 保存已生成的部分
-                            if (responseText) {
-                                // 在回复末尾添加提示
-                                responseText += '\n\n[回复已被用户中止]';
-                                contentDiv.innerHTML = formatMessage(responseText);
-                            } else {
-                                // 如果没有生成任何内容，则移除消息元素
-                                chatContainer.removeChild(botMessageElement);
-                            }
-                        } else {
-                            throw e; // 重新抛出其他错误
-                        }
-                    }
-                    
-                    // 保存到对话历史
-                    if (responseText && conversation) {
-                        conversation.messages.push({
-                            role: 'assistant',
-                            content: responseText
-                        });
-                        saveConversations();
-                    }
-                    
+                }
+                
+                // 获取生成参数
+                const generationParams = getGenerationSettings();
+                
+                // 根据设置决定使用流式还是标准响应
+                if (settings.stream) {
+                    await handleStreamResponse(prompt, history, aiMessage, aiMessageId, signal, generationParams);
                 } else {
-                    // 非流式响应
-                    const data = await response.json();
-                    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
-                        responseText = data.choices[0].message.content;
-                        appendMessage(responseText, 'bot');
-                        
-                        // 保存到对话历史
-                        if (conversation) {
-                            conversation.messages.push({
-                                role: 'assistant',
-                                content: responseText
-                            });
-                            saveConversations();
-                        }
-                    } else {
-                        throw new Error('API响应格式无效');
-                    }
+                    await handleStandardResponse(prompt, history, aiMessage, aiMessageId, signal, generationParams);
                 }
+                
+                // 保存更新后的对话
+                saveConversations();
                 
             } catch (error) {
-                // 检查是否是中止错误
-                if (error.name !== 'AbortError') {
-                    console.error('请求错误:', error);
-                    showNotification(`错误: ${error.message}`, true);
+                if (error.name === 'AbortError') {
+                    console.log('请求已被用户取消');
+                } else {
+                    console.error('发送请求时出错:', error);
+                    showError('发送请求时出错: ' + error.message);
                 }
             } finally {
-                // 隐藏输入中指示器
+                // 隐藏打字指示器和停止按钮
                 typingIndicator.style.display = 'none';
-                
-                // 隐藏停止生成按钮
                 stopGenerating.style.display = 'none';
                 
-                // 清除AbortController
+                // 重新启用输入
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                messageInput.focus();
+                
+                // 重置中断控制器
                 abortController = null;
                 
-                // 启用发送按钮
-                sendButton.disabled = false;
-                
-                // 聚焦输入框
-                messageInput.focus();
+                // 更新标题和对话列表
+                updateConversationList();
             }
-        }
-        
-        // 添加消息到聊天
-        function appendMessage(message, sender) {
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('chat-message');
-            messageElement.classList.add(sender + '-message');
-            
-            // 添加头像
-            const avatarDiv = document.createElement('div');
-            avatarDiv.className = 'message-avatar';
-            
-            if (sender === 'user') {
-                avatarDiv.innerHTML = '<i class="fas fa-user"></i>';
-            } else {
-                avatarDiv.innerHTML = '<i class="fas fa-robot"></i>';
-            }
-            
-            // 添加消息内容
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.innerHTML = formatMessage(message);
-            
-            // 添加消息操作按钮
-            const actionsDiv = document.createElement('div');
-            actionsDiv.classList.add('message-actions');
-            
-            // 添加复制按钮
-            const copyBtn = document.createElement('button');
-            copyBtn.innerHTML = '<i class="fas fa-copy" title="复制"></i>';
-            copyBtn.addEventListener('click', function() {
-                copyMessageText(this);
-            });
-            actionsDiv.appendChild(copyBtn);
-            
-            // 根据发送者添加不同的按钮
-            if (sender === 'user') {
-                // 用户消息添加编辑和删除按钮
-                const editBtn = document.createElement('button');
-                editBtn.innerHTML = '<i class="fas fa-edit" title="编辑"></i>';
-                editBtn.addEventListener('click', function() {
-                    editUserMessage(messageElement);
-                });
-                actionsDiv.appendChild(editBtn);
-            } else {
-                // 机器人消息添加重新生成按钮
-                const regenerateBtn = document.createElement('button');
-                regenerateBtn.innerHTML = '<i class="fas fa-redo-alt" title="重新生成"></i>';
-                regenerateBtn.addEventListener('click', function() {
-                    regenerateResponse();
-                });
-                actionsDiv.appendChild(regenerateBtn);
-            }
-            
-            // 添加删除按钮
-            const deleteBtn = document.createElement('button');
-            deleteBtn.innerHTML = '<i class="fas fa-trash" title="删除"></i>';
-            deleteBtn.addEventListener('click', function() {
-                deleteMessage(messageElement, sender);
-            });
-            actionsDiv.appendChild(deleteBtn);
-            
-            // 组装消息元素
-            messageElement.appendChild(avatarDiv);
-            messageElement.appendChild(contentDiv);
-            messageElement.appendChild(actionsDiv);
-            
-            chatContainer.appendChild(messageElement);
-            
-            // 滚动到底部
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-        
-        // 格式化消息，支持简单的Markdown
-        function formatMessage(text) {
-            // 检测代码块
-            text = text.replace(/```([\w-]*)\n([\s\S]*?)```/g, function(match, language, code) {
-                language = language.trim();
-                const languageLabel = language ? language : 'code';
-                return `<pre class="pre-formatted" data-language="${languageLabel}">
-                    <button class="code-copy-btn" onclick="copyToClipboard(this.parentNode.textContent.trim())">
-                        <i class="fas fa-copy"></i> 复制
-                    </button>
-                    ${code.trim()}
-                </pre>`;
-            });
-            
-            // 检测行内代码
-            text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-            
-            // 检测标题
-            text = text.replace(/^### (.*$)/gm, '<h3>$1</h3>');
-            text = text.replace(/^## (.*$)/gm, '<h2>$1</h2>');
-            text = text.replace(/^# (.*$)/gm, '<h1>$1</h1>');
-            
-            // 检测加粗
-            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            
-            // 检测斜体
-            text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-            
-            // 检测列表
-            text = text.replace(/^\s*-\s(.*$)/gm, '<li>$1</li>');
-            text = text.replace(/<li>(.*)<\/li>/g, '<ul><li>$1</li></ul>');
-            text = text.replace(/<\/ul>\s*<ul>/g, '');
-            
-            // 将URL转为链接
-            text = text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
-            
-            return text;
-        }
-        
-        // 复制到剪贴板
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(
-                () => {
-                    showNotification('代码已复制到剪贴板');
-                },
-                (err) => {
-                    console.error('复制失败:', err);
-                    showNotification('复制失败', true);
-                }
-            );
-        }
-        
-        // 自动调整文本框高度
-        function adjustTextareaHeight() {
-            messageInput.style.height = 'auto';
-            messageInput.style.height = (messageInput.scrollHeight) + 'px';
-            if (messageInput.scrollHeight > 200) {
-                messageInput.style.height = '200px';
-            }
-        }
-        
-        // 复制消息文本
-        function copyMessageText(element) {
-            const messageElement = element.closest('.chat-message');
-            const textToCopy = messageElement.textContent.replace(/复制/, '').trim();
-            
-            navigator.clipboard.writeText(textToCopy).then(
-                () => {
-                    showNotification('已复制到剪贴板');
-                },
-                (err) => {
-                    console.error('复制失败:', err);
-                    showNotification('复制失败', true);
-                }
-            );
-        }
-        
-        // 切换主题
-        function toggleTheme() {
-            const body = document.body;
-            const themeButton = document.getElementById('toggle-theme-btn');
-            const currentTheme = body.getAttribute('data-theme');
-            
-            if (!currentTheme || currentTheme === 'light') {
-                body.setAttribute('data-theme', 'dark');
-                themeButton.innerHTML = '<i class="fas fa-moon"></i> 切换到浅色主题';
-            } else {
-                body.removeAttribute('data-theme');
-                themeButton.innerHTML = '<i class="fas fa-sun"></i> 切换到深色主题';
-            }
-            
-            // 保存主题设置到localStorage
-            localStorage.setItem('geminiChatTheme', !currentTheme || currentTheme === 'light' ? 'dark' : 'light');
-        }
-        
-        // 清空当前聊天
-        function clearCurrentChat() {
-            if (confirm('确定要清空当前聊天记录吗？')) {
-                const conversation = getCurrentConversation();
-                if (conversation) {
-                    conversation.messages = [];
-                    saveConversations();
-                    loadConversation(currentConversationId);
-                }
-            }
-        }
-        
-        // 清空所有聊天
-        function clearAllChats() {
-            if (confirm('确定要清空所有聊天记录吗？这个操作不可恢复！')) {
-                conversations = [];
-                saveConversations();
-                createNewConversation();
-            }
-        }
-        
-        // 导出聊天记录
-        function exportChat() {
-            const conversation = getCurrentConversation();
-            if (!conversation || conversation.messages.length === 0) {
-                showNotification('没有聊天记录可导出', true);
-                return;
-            }
-            
-            const exportData = {
-                version: '1.0',
-                timestamp: new Date().toISOString(),
-                model: settings.model,
-                conversation: conversation
-            };
-            
-            const dataStr = JSON.stringify(exportData, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const exportFilename = `gemini_chat_${new Date().toISOString().slice(0,10)}.json`;
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', exportFilename);
-            linkElement.click();
-        }
-        
-        // 导入聊天记录
-        function importChat(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (data.conversation) {
-                        // 创建新对话
-                        const newConversation = {
-                            id: Date.now().toString(),
-                            title: data.conversation.title || '导入的对话',
-                            messages: data.conversation.messages || []
-                        };
-                        
-                        conversations.push(newConversation);
-                        currentConversationId = newConversation.id;
-                        
-                        saveConversations();
-                        loadConversation(currentConversationId);
-                        
-                        showNotification('聊天记录导入成功');
-                    } else {
-                        throw new Error('无效的聊天记录格式');
-                    }
-                } catch (error) {
-                    console.error('导入失败:', error);
-                    showNotification('聊天记录导入失败: ' + error.message, true);
-                }
-            };
-            reader.readAsText(file);
-        }
-        
-        // 设置事件监听器
-        function setupEventListeners() {
-            // 发送消息
-            sendButton.addEventListener('click', sendMessage);
-            
-            messageInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            });
-            
-            // 停止生成按钮
-            stopButton.addEventListener('click', () => {
-                if (abortController) {
-                    abortController.abort();
-                    stopGenerating.style.display = 'none';
-                }
-            });
-            
-            // 自动调整文本框高度
-            messageInput.addEventListener('input', adjustTextareaHeight);
-            
-            // 移动UI相关监听器改为新的侧边栏相关监听器
-            settingsBtn.addEventListener('click', function() {
-                toggleSettingsSidebar();
-            });
-            
-            closeSettingsBtn.addEventListener('click', function() {
-                toggleSettingsSidebar(false);
-            });
-            
-            // 点击窗口外部关闭设置
-            document.addEventListener('click', function(e) {
-                if (settingsSidebar.classList.contains('show') && 
-                    !settingsSidebar.contains(e.target) && 
-                    e.target !== settingsBtn && 
-                    !settingsBtn.contains(e.target)) {
-                    toggleSettingsSidebar(false);
-                }
-            });
-            
-            // 设置分区折叠/展开
-            const sectionHeaders = document.querySelectorAll('.settings-section-header');
-            sectionHeaders.forEach(header => {
-                header.addEventListener('click', function() {
-                    toggleSettingsSection(this);
-                });
-                
-                // 默认展开第一个分区
-                if (header === sectionHeaders[0]) {
-                    toggleSettingsSection(header);
-                }
-            });
-            
-            // 范围滑块更新显示值
-            temperatureRange.addEventListener('input', function() {
-                temperatureValue.textContent = this.value;
-            });
-            
-            topPRange.addEventListener('input', function() {
-                topPValue.textContent = this.value;
-            });
-            
-            maxTokensRange.addEventListener('input', function() {
-                maxTokensValue.textContent = this.value;
-            });
-            
-            // 新增设置项的事件监听器
-            topKRange.addEventListener('input', function() {
-                topKValue.textContent = this.value;
-            });
-            
-            repetitionPenaltyRange.addEventListener('input', function() {
-                repetitionPenaltyValue.textContent = this.value;
-            });
-            
-            streamSpeedRange.addEventListener('input', function() {
-                streamSpeedValue.textContent = this.value;
-            });
-            
-            fontSizeRange.addEventListener('input', function() {
-                fontSizeValue.textContent = this.value;
-                applyFontSize();
-            });
-            
-            chatWidthRange.addEventListener('input', function() {
-                chatWidthValue.textContent = `${this.value}%`;
-                applyChatWidth();
-            });
-            
-            chatStyleSelect.addEventListener('change', function() {
-                applyChatStyle();
-            });
-            
-            // 主题切换
-            toggleThemeBtn.addEventListener('change', function() {
-                toggleTheme(this.checked);
-            });
-            
-            // 新建聊天
-            newChatBtn.addEventListener('click', createNewConversation);
-            
-            // 清空当前聊天
-            clearChatBtn.addEventListener('click', clearCurrentChat);
-            
-            // 清空所有聊天
-            clearAllBtn.addEventListener('click', clearAllChats);
-            
-            // 导出聊天
-            exportChatBtn.addEventListener('click', exportChat);
-            
-            // 导入聊天
-            importChatBtn.addEventListener('click', function() {
-                importFileInput.click();
-            });
-            
-            importFileInput.addEventListener('change', importChat);
-            
-            // 验证密钥
-            checkConnectionBtn.addEventListener('click', function() {
-                // 如果已认证，则重新进行认证
-                if (isAuthenticated) {
-                    isAuthenticated = false;
-                    apiKeyAuthInput.value = '';
-                    modelSelectionRow.style.display = 'none';
-                    saveSettingsBtn.style.display = 'none';
-                    showNotification('已重置认证状态');
-                } else {
-                    validateAccessKey();
-                }
-            });
-            
-            // 刷新模型列表
-            refreshModelsBtn.addEventListener('click', function() {
-                if (!isAuthenticated) {
-                    showNotification('请先验证密钥', true);
-                    return;
-                }
-                fetchAvailableModels();
-                showNotification('正在刷新模型列表...');
-            });
-            
-            // 保存设置
-            saveSettingsBtn.addEventListener('click', saveSettings);
-            
-            // 为所有复制按钮添加事件监听器
-            document.querySelectorAll('.copy-message').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    copyMessageText(this);
-                });
-            });
-            
-            // 添加移动端菜单按钮事件
-            document.getElementById('mobile-menu-btn').addEventListener('click', function() {
-                document.querySelector('.sidebar').classList.toggle('show');
-            });
-            
-            // 点击主内容区域时关闭侧边栏（仅限移动端）
-            document.querySelector('.main-content').addEventListener('click', function(e) {
-                if (window.innerWidth <= 768 && document.querySelector('.sidebar').classList.contains('show')) {
-                    document.querySelector('.sidebar').classList.remove('show');
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-            });
-            
-            // 设置窗口关闭按钮事件修改，确认是否保存
-            closeSettingsBtn.addEventListener('click', function() {
-                // 如果已认证，检查是否有未保存的设置
-                if (isAuthenticated) {
-                    const currentSettings = {
-                        temperature: parseFloat(temperatureRange.value),
-                        topP: parseFloat(topPRange.value),
-                        maxTokens: parseInt(maxTokensRange.value),
-                        stream: streamToggle.checked,
-                        topK: parseInt(topKRange.value),
-                        repetitionPenalty: parseFloat(repetitionPenaltyRange.value),
-                        streamSpeed: parseInt(streamSpeedRange.value),
-                        fontSize: parseFloat(fontSizeRange.value),
-                        chatWidth: parseInt(chatWidthRange.value),
-                        chatStyle: parseInt(chatStyleSelect.value),
-                        autoScroll: autoScrollToggle.checked,
-                        soundEnabled: soundToggle.checked,
-                        showTimestamp: timestampToggle.checked
-                    };
-                    
-                    // 检查是否有未保存的更改
-                    let hasChanges = false;
-                    for (const key in currentSettings) {
-                        if (settings[key] !== currentSettings[key]) {
-                            hasChanges = true;
-                            break;
-                        }
-                    }
-                    
-                    if (hasChanges) {
-                        if (confirm('您有未保存的更改，是否保存？')) {
-                            saveSettings();
-                        }
-                    }
-                }
-                
-                toggleSettingsSidebar(false);
-            });
-            
-            // 添加全局Esc键事件处理
-            document.addEventListener('keydown', function(e) {
-                // 如果按下的是Esc键 (keyCode 27)
-                if (e.key === 'Escape' || e.keyCode === 27) {
-                    // 如果设置侧边栏是打开的，关闭它
-                    if (settingsSidebar.classList.contains('show')) {
-                        toggleSettingsSidebar(false);
-                        e.preventDefault();
-                        return;
-                    }
-                    
-                    // 如果有消息正在编辑，取消编辑
-                    const editingMessage = document.querySelector('.edit-message-input');
-                    if (editingMessage) {
-                        const cancelButton = editingMessage.closest('.edit-message-container')
-                            .querySelector('.secondary-btn');
-                        if (cancelButton) {
-                            cancelButton.click();
-                            e.preventDefault();
-                            return;
-                        }
-                    }
-                }
-            });
         }
 
-        // 静默发送消息（不添加新的用户消息，使用已有的最后一条用户消息）
-        async function sendMessageSilently() {
-            const conversation = getCurrentConversation();
-            if (!conversation || conversation.messages.length === 0) return;
-            
-            // 检查是否已通过密钥验证
-            if (!isAuthenticated) {
-                showNotification('请先在设置中验证密钥', true);
-                return;
-            }
-            
-            // 禁用发送按钮
-            sendButton.disabled = true;
-            
-            // 显示输入中指示器
-            typingIndicator.style.display = 'flex';
-            
-            // 显示停止生成按钮
-            stopGenerating.style.display = 'block';
-            
+        // 处理流式响应
+        async function handleStreamResponse(prompt, history, aiMessage, messageId, signal, generationParams) {
             try {
-                // 创建AbortController用于中止fetch请求
-                abortController = new AbortController();
-                const signal = abortController.signal;
-                
-                // 检查API连接状态
-                if (apiStatus !== 'connected') {
-                    throw new Error('API未连接，请检查设置');
-                }
-                
-                // 获取选择的模型
-                const selectedModel = settings.model;
-                
-                // 准备请求体和消息
-                const messages = [];
-                
-                // 添加历史消息
-                conversation.messages.forEach(msg => {
-                    messages.push({
-                        role: msg.role,
-                        content: msg.content
-                    });
-                });
+                const endpoint = `${INTERNAL_API_URL}/v1beta/models/${settings.model}:streamGenerateContent`;
                 
                 // 构建请求体
                 const requestBody = {
-                    model: selectedModel,
-                    messages: messages,
-                    temperature: settings.temperature,
-                    top_p: settings.topP,
-                    max_tokens: settings.maxTokens,
-                    stream: settings.stream
+                    contents: [
+                        ...history,
+                        {
+                            role: 'user',
+                            parts: [{ text: prompt }]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: generationParams.temperature,
+                        topP: generationParams.topP,
+                        topK: generationParams.topK,
+                        maxOutputTokens: generationParams.maxOutputTokens,
+                    },
+                    safetySettings: [
+                        {
+                            category: "HARM_CATEGORY_HARASSMENT",
+                            threshold: "BLOCK_NONE"
+                        },
+                        {
+                            category: "HARM_CATEGORY_HATE_SPEECH",
+                            threshold: "BLOCK_NONE"
+                        },
+                        {
+                            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                            threshold: "BLOCK_NONE"
+                        },
+                        {
+                            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                            threshold: "BLOCK_NONE"
+                        }
+                    ]
                 };
                 
-                // 确定API URL路径
-                const endpoint = `${INTERNAL_API_URL}/v1/chat/completions`;
-                
-                // 设置请求头
-                const headers = {
-                    'Content-Type': 'application/json'
-                };
-                
-                // 添加API密码到Headers
-                if (INTERNAL_API_PASSWORD) {
-                    headers['Authorization'] = `Bearer ${INTERNAL_API_PASSWORD}`;
-                }
-                
-                // 发送请求
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: headers,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKeyAuthInput.value}`
+                    },
                     body: JSON.stringify(requestBody),
-                    signal: signal
+                    signal
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`API返回错误: ${response.status} ${response.statusText}`);
+                    const errorText = await response.text();
+                    throw new Error(`API错误 (${response.status}): ${errorText}`);
                 }
                 
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
                 let responseText = '';
                 
-                // 处理流式响应
-                if (settings.stream && response.body) {
-                    // 创建机器人消息元素
-                    const botMessageElement = document.createElement('div');
-                    botMessageElement.classList.add('bot-message');
-                    botMessageElement.classList.add('chat-message');
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
                     
-                    // 添加头像
-                    const avatarDiv = document.createElement('div');
-                    avatarDiv.className = 'message-avatar';
-                    avatarDiv.innerHTML = '<i class="fas fa-robot"></i>';
-                    botMessageElement.appendChild(avatarDiv);
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
                     
-                    // 添加消息内容
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'message-content';
-                    botMessageElement.appendChild(contentDiv);
-                    
-                    // 添加消息操作按钮
-                    const actionsDiv = document.createElement('div');
-                    actionsDiv.classList.add('message-actions');
-                    
-                    // 添加复制按钮
-                    const copyBtn = document.createElement('button');
-                    copyBtn.innerHTML = '<i class="fas fa-copy" title="复制"></i>';
-                    copyBtn.addEventListener('click', function() {
-                        copyMessageText(this);
-                    });
-                    actionsDiv.appendChild(copyBtn);
-                    
-                    // 添加重新生成按钮
-                    const regenerateBtn = document.createElement('button');
-                    regenerateBtn.innerHTML = '<i class="fas fa-redo-alt" title="重新生成"></i>';
-                    regenerateBtn.addEventListener('click', function() {
-                        regenerateResponse();
-                    });
-                    actionsDiv.appendChild(regenerateBtn);
-                    
-                    // 添加删除按钮
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.innerHTML = '<i class="fas fa-trash" title="删除"></i>';
-                    deleteBtn.addEventListener('click', function() {
-                        deleteMessage(botMessageElement, 'bot');
-                    });
-                    actionsDiv.appendChild(deleteBtn);
-                    
-                    botMessageElement.appendChild(actionsDiv);
-                    
-                    chatContainer.appendChild(botMessageElement);
-                    
-                    // 处理流数据
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    
-                    try {
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.substring(6);
+                            if (dataStr === '[DONE]') continue;
                             
-                            // 解码数据
-                            const chunk = decoder.decode(value, { stream: true });
-                            
-                            // 处理SSE格式的数据
-                            const lines = chunk.split('\n');
-                            for (const line of lines) {
-                                if (line.startsWith('data:')) {
-                                    let data = line.slice(5).trim();
+                            try {
+                                const data = JSON.parse(dataStr);
+                                const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                                
+                                if (text) {
+                                    // 累加响应文本
+                                    responseText += text;
                                     
-                                    // 检查是否是 [DONE] 消息
-                                    if (data === '[DONE]') continue;
+                                    // 更新UI中的消息
+                                    updateMessageContent(messageId, responseText);
                                     
-                                    try {
-                                        // 解析JSON数据
-                                        const jsonData = JSON.parse(data);
-                                        
-                                        // 提取内容
-                                        if (jsonData.choices && 
-                                            jsonData.choices[0] && 
-                                            jsonData.choices[0].delta && 
-                                            jsonData.choices[0].delta.content) {
-                                            const content = jsonData.choices[0].delta.content;
-                                            responseText += content;
-                                            contentDiv.innerHTML = formatMessage(responseText);
-                                            
-                                            // 自动滚动到底部
-                                            chatContainer.scrollTop = chatContainer.scrollHeight;
-                                        }
-                                    } catch (e) {
-                                        console.error('解析流数据错误:', e);
+                                    // 如果启用了自动滚动
+                                    if (settings.autoScroll) {
+                                        scrollToBottom();
                                     }
                                 }
+                            } catch (e) {
+                                console.warn('解析流数据时出错:', e);
                             }
                         }
-                    } catch (e) {
-                        // 检查是否是用户手动中止
-                        if (e.name === 'AbortError') {
-                            console.log('用户中止了回复生成');
-                            // 保存已生成的部分
-                            if (responseText) {
-                                // 在回复末尾添加提示
-                                responseText += '\n\n[回复已被用户中止]';
-                                contentDiv.innerHTML = formatMessage(responseText);
-                            } else {
-                                // 如果没有生成任何内容，则移除消息元素
-                                chatContainer.removeChild(botMessageElement);
-                            }
-                        } else {
-                            throw e; // 重新抛出其他错误
-                        }
                     }
-                    
-                    // 保存到对话历史
-                    if (responseText) {
-                        conversation.messages.push({
-                            role: 'assistant',
-                            content: responseText
-                        });
-                        saveConversations();
-                    }
-                    
-                } else {
-                    // 处理非流式响应基本不变...
-                    // ... existing code ...
                 }
+                
+                // 更新AI消息内容
+                aiMessage.content = responseText;
+                
+                // 将消息添加到当前对话
+                const currentConversation = conversations.find(c => c.id === currentConversationId);
+                if (currentConversation) {
+                    // 检查是否已经有该消息（可能在创建占位符时已添加）
+                    const existingMsgIndex = currentConversation.messages.findIndex(
+                        msg => msg.timestamp === aiMessage.timestamp
+                    );
+                    
+                    if (existingMsgIndex >= 0) {
+                        currentConversation.messages[existingMsgIndex] = aiMessage;
+                    } else {
+                        currentConversation.messages.push(aiMessage);
+                    }
+                }
+                
+                // 如果标题为默认标题，用第一个用户消息更新标题
+                if (currentConversation && (currentConversation.title === '新对话' || !currentConversation.title) && currentConversation.messages.length >= 1) {
+                    const firstUserMessage = currentConversation.messages[0].content;
+                    currentConversation.title = firstUserMessage.substring(0, 30) + (firstUserMessage.length > 30 ? '...' : '');
+                }
+                
             } catch (error) {
-                // ... existing code ...
-            } finally {
-                // ... existing code ...
+                if (error.name !== 'AbortError') {
+                    throw error;
+                }
             }
         }
 
+        // 处理标准响应
+        async function handleStandardResponse(prompt, history, aiMessage, messageId, signal, generationParams) {
+            try {
+                const endpoint = `${INTERNAL_API_URL}/v1beta/models/${settings.model}:generateContent`;
+                
+                // 构建请求体
+                const requestBody = {
+                    contents: [
+                        ...history,
+                        {
+                            role: 'user',
+                            parts: [{ text: prompt }]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: generationParams.temperature,
+                        topP: generationParams.topP,
+                        topK: generationParams.topK,
+                        maxOutputTokens: generationParams.maxOutputTokens,
+                    },
+                    safetySettings: [
+                        {
+                            category: "HARM_CATEGORY_HARASSMENT",
+                            threshold: "BLOCK_NONE"
+                        },
+                        {
+                            category: "HARM_CATEGORY_HATE_SPEECH",
+                            threshold: "BLOCK_NONE"
+                        },
+                        {
+                            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                            threshold: "BLOCK_NONE"
+                        },
+                        {
+                            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                            threshold: "BLOCK_NONE"
+                        }
+                    ]
+                };
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKeyAuthInput.value}`
+                    },
+                    body: JSON.stringify(requestBody),
+                    signal
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API错误 (${response.status}): ${errorText}`);
+                }
+                
+                const data = await response.json();
+                const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                
+                // 更新AI消息内容
+                aiMessage.content = responseText;
+                updateMessageContent(messageId, responseText);
+                
+                // 将消息添加到当前对话
+                const currentConversation = conversations.find(c => c.id === currentConversationId);
+                if (currentConversation) {
+                    // 检查是否已经有该消息（可能在创建占位符时已添加）
+                    const existingMsgIndex = currentConversation.messages.findIndex(
+                        msg => msg.timestamp === aiMessage.timestamp
+                    );
+                    
+                    if (existingMsgIndex >= 0) {
+                        currentConversation.messages[existingMsgIndex] = aiMessage;
+                    } else {
+                        currentConversation.messages.push(aiMessage);
+                    }
+                }
+                
+                // 如果启用了自动滚动
+                if (settings.autoScroll) {
+                    scrollToBottom();
+                }
+                
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    throw error;
+                }
+            }
+        }
+        
         // 在页面加载时初始化
         document.addEventListener('DOMContentLoaded', initialize);
         
@@ -3627,7 +2845,7 @@
             // 如果没有消息，显示欢迎信息
             if (conversation.messages.length === 0) {
                 chatContainer.innerHTML = '<div class="bot-message chat-message"><div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content">你好！我是 Gemini，一个基于 Google Gemini 的 AI 助手。有什么我可以帮到你的吗？</div><div class="message-actions"><button class="copy-message" title="复制"><i class="fas fa-copy"></i></button></div></div>';
-            } else {
+                } else {
                 // 加载对话消息
                 conversation.messages.forEach(msg => {
                     appendMessage(msg.content, msg.role === 'user' ? 'user' : 'bot');
