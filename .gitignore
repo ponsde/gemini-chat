@@ -1,0 +1,28 @@
+# 忽略参考模板目录
+SillyTavern-1.12.12/
+templates/
+
+# 忽略Node.js相关文件
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+.pnpm-debug.log
+
+# 忽略编辑器和系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 忽略构建和缓存文件
+dist/
+build/
+.cache/
+
+# 忽略环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local 
